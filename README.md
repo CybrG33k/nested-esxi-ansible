@@ -44,23 +44,6 @@ The end goal is simple:
 
 ---
 
-##  Repository Layout
-
-create-nested-esxi-ansible/
-├── main.yaml
-├── vars/
-│   └── creds.yaml
-├── roles/
-│   ├── deployesxi/
-│   │   ├── tasks/
-│   │   │   └── main.yaml
-│   │   └── templates/
-│   │       └── ks.j2
-│   └── cleanup/
-│       └── tasks/
-│           └── main.yaml
-└── README.md
-
 ## Prerequisites
 
 ### Physical Environment
