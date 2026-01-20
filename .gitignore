@@ -1,0 +1,11 @@
+# secrets
+vars/creds.yaml
+*.retry
+
+# venv
+ansible-venv/
+.venv/
+
+# OS/editor
+.DS_Store
+.vscode/

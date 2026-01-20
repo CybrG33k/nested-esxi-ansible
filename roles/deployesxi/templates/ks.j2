@@ -1,0 +1,84 @@
+# Accept the VMware End User License Agreement
+vmaccepteula
+
+# Install ESXi to the local disk
+install --firstdisk --overwritevmfs --ignoreprereqwarnings --ignoreprereqerrors --forceunsupportedinstall
+
+# Set the root password
+rootpw "{{ nested_info_global.password }}"
+
+# Host Network Settings
+# network --bootproto=dhcp --device=vmnic0
+network --bootproto=static --device=vmnic0 --addvmportgroup=0 --ip={{ nested_info.staticip }} --netmask={{ nested_info_global.staticmask }} --gateway={{ nested_info_global.gateway }} --nameserver={{ nested_info_global.dns }} --hostname={{ nested_info.fqdn }}
+
+# Reboot ESXi host
+reboot
+
+# Open busybox and launch commands
+%firstboot --interpreter=busybox
+
+# Enable & start remote ESXi Shell (SSH)
+vim-cmd hostsvc/enable_ssh
+vim-cmd hostsvc/start_ssh
+
+# Enable & start ESXi Shell (TSM)
+vim-cmd hostsvc/enable_esx_shell
+vim-cmd hostsvc/start_esx_shell
+
+# Supress ESXi Shell warning
+esxcli system settings advanced set -o /UserVars/SuppressShellWarning -i 1
+
+# Disable CEIP
+esxcli system settings advanced set -o /UserVars/HostClientCEIPOptIn -i 2
+
+# Configure DNS servers
+esxcli network ip dns server add --server={{ nested_info_global.dns }}
+
+# Disable IPv6 on vmk0
+esxcli network ip interface ipv6 set -i vmk0 -e false
+
+# Regenerate the certificate
+/sbin/generate-certificates
+
+#Configure NTP
+esxcli system ntp set -s={{ nested_info_global.ntpserver }}
+esxcli system ntp set -e=yes
+
+# ------------------------------------------------------------
+# vSwitch / vmk0 hardening for nested virtualization
+#   - vSwitch0 MTU 9000
+#   - vSwitch0 security: promisc/MAC changes/forged = Accept
+#   - Management Network PG MTU 9000
+#   - vmk0 MTU 9000
+# ------------------------------------------------------------
+
+# vSwitch0 MTU 9000
+esxcli network vswitch standard set -v vSwitch0 -m 9000
+
+# vSwitch0 security policy (REQUIRED for nested ESXi networking)
+esxcli network vswitch standard policy security set -v vSwitch0 -p true -m true -f true
+
+# Management Network portgroup MTU 9000
+esxcli network vswitch standard portgroup set -p "Management Network" -m 9000
+
+# vmk0 MTU 9000
+esxcli network ip interface set -i vmk0 -m 9000
+
+# ------------------------------------------------------------
+# Ensure "VM Network" portgroup exists (often missing on scripted installs)
+# Optional VLAN: define nested_info_global.vm_network_vlan in creds.yaml
+# ------------------------------------------------------------
+if ! esxcli network vswitch standard portgroup list | grep -q '^VM Network'; then
+  esxcli network vswitch standard portgroup add -p "VM Network" -v vSwitch0
+fi
+
+# Remove the temporary NFS mount created during install (kickstart source)
+# (ignore errors if it doesn't exist)
+esxcli storage nfs remove -v remote-install-location || true
+
+#Add primary NFSv3 datastore for nested lab
+# (ignore errors if it already exists)
+esxcli storage nfs add -H 10.10.10.250 -s /volume1/VCF -v NFS || true
+
+# Reboot ESXi host
+reboot

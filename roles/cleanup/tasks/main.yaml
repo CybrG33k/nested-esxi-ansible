@@ -1,0 +1,38 @@
+#- name: Cleanup file on a datastore
+#  community.vmware.vsphere_file:
+#    hostname: "{{ physical_esxi_info.esxi_host }}"
+#    username: "{{ physical_esxi_info.esxi_username }}"
+#    password: "{{ physical_esxi_info.esxi_password }}"
+#    validate_certs: false
+#    datacenter: ha-datacenter
+#    datastore: "{{ physical_esxi_info.datastore_name }}"
+#    path: "ISOs/{{ nested_info.name }}.iso"
+#    state: absent
+
+- name: Disconnect ISO from VM CD-ROM to unlock datastore file
+  community.vmware.vmware_guest:
+    hostname: "{{ physical_esxi_info.esxi_host }}"
+    username: "{{ physical_esxi_info.esxi_username }}"
+    password: "{{ physical_esxi_info.esxi_password }}"
+    validate_certs: false
+    datacenter: "ha-datacenter"
+    folder: "/ha-datacenter/vm"
+    name: "{{ nested_info.name }}"
+    state: present
+    cdrom:
+      - controller_type: ide
+        controller_number: 0
+        unit_number: 0
+        type: none          # disconnect (keeps device, removes ISO backin
+        state: present
+
+- name: Cleanup file on a datastore
+  community.vmware.vsphere_file:
+    hostname: "{{ physical_esxi_info.esxi_host }}"
+    username: "{{ physical_esxi_info.esxi_username }}"
+    password: "{{ physical_esxi_info.esxi_password }}"
+    validate_certs: false
+    datacenter: ha-datacenter
+    datastore: "{{ physical_esxi_info.datastore_name }}"
+    path: "ISOs/{{ nested_info.name }}.iso"
+    state: absent

@@ -1,0 +1,143 @@
+- name: Create temp directory for iso extraction
+  ansible.builtin.file:
+    path: "/tmp/isoextract/KS"
+    state: directory
+    mode: "755"
+
+- name: Create temp directory for the finished isos
+  ansible.builtin.file:
+    path: "/tmp/isofinished"
+    state: directory
+    mode: "755"
+
+- name: Extract ESXi ISO
+  ansible.builtin.command: "xorriso -osirrox on -indev {{ nested_info_global.iso_location }} -extract / /tmp/isoextract"
+  changed_when: false
+
+- name: Add write permission to extracted files
+  ansible.builtin.file:
+    path: "/tmp/isoextract"
+    state: directory
+    recurse: true
+    mode: u+w
+
+- name: Edit BOOT.CFG to point to per-host KS on NFS (DHCP + CPU override)
+  ansible.builtin.replace:
+    path: "{{ bootcfg }}"
+    regexp: '^kernelopt=.*'
+    replace: >-
+      kernelopt=runweasel
+      allowLegacyCPU=true
+      cpuSupportOverride=TRUE
+      netdevice=vmnic0
+      bootproto=dhcp
+      ks=nfs://10.10.10.250/volume1/kickstart/{{ nested_info.name }}.cfg
+  loop:
+    - "/tmp/isoextract/BOOT.CFG"
+    - "/tmp/isoextract/EFI/BOOT/BOOT.CFG"
+  loop_control:
+    loop_var: bootcfg
+
+- name: Edit BOOT.CFG to point to per-host KS on NFS (DHCP)
+  ansible.builtin.replace:
+    path: "{{ bootcfg }}"
+    regexp: '^kernelopt=.*'
+    replace: >-
+      kernelopt=runweasel allowLegacyCPU=true cpuSupportOverride=TRUE netdevice=vmnic0 bootproto=dhcp
+      ks=nfs://10.10.10.250/volume1/kickstart/{{ nested_info.name }}.cfg
+  loop:
+    - "/tmp/isoextract/BOOT.CFG"
+    - "/tmp/isoextract/EFI/BOOT/BOOT.CFG"
+  loop_control:
+    loop_var: bootcfg
+
+- name: Create kickstart file on NFS share (per host)
+  ansible.builtin.template:
+    src: "ks.j2"
+    dest: "/mnt/kickstart/{{ nested_info.name }}.cfg"
+    mode: "0644"
+  tags:
+    - kickstart
+
+- name: Create custom ESXi ISO for each nested ESXi host
+  ansible.builtin.command: "xorrisofs -relaxed-filenames -J -R -o /tmp/isofinished/{{ nested_info.name }}.iso \
+                          -b ISOLINUX.BIN -c BOOT.CAT -no-emul-boot -boot-load-size 4 -boot-info-table -eltorito-alt-boot -e EFIBOOT.IMG -no-emul-boot /tmp/isoextract/"
+  args:
+    chdir: "/tmp/isoextract/"
+
+- name: Upload the ESXi ISO to the datastore
+  community.vmware.vsphere_copy:
+    hostname: "{{ physical_esxi_info.esxi_host }}"
+    username: "{{ physical_esxi_info.esxi_username }}"
+    password: "{{ physical_esxi_info.esxi_password }}"
+    validate_certs: false
+    datacenter: ha-datacenter
+    src: "/tmp/isofinished/{{ nested_info.name }}.iso"
+    datastore: "{{ physical_esxi_info.datastore_name }}"
+    path: "ISOs/{{ nested_info.name }}.iso"
+
+- name: Reset networklist
+  ansible.builtin.set_fact:
+    networklist: []
+
+- name: Build networks list for vmware_guest
+  ansible.builtin.set_fact:
+    networklist: "{{ networklist + [ {'name': item.name, 'state': 'new'} ] }}"
+  loop: "{{ nested_info_global.networks }}"
+
+- name: Deploy nested ESXi host
+  community.vmware.vmware_guest:
+    hostname: "{{ physical_esxi_info.esxi_host }}"
+    username: "{{ physical_esxi_info.esxi_username }}"
+    password: "{{ physical_esxi_info.esxi_password }}"
+    validate_certs: false
+    name: "{{ nested_info.name }}"
+    state: poweredoff
+    guest_id: "vmkernel9Guest"
+    datacenter: "ha-datacenter"
+    folder: '/vm'
+    disk:
+      - size_gb: 40
+        type: thin
+        datastore: SSD
+        unit_number: 0
+        disk_mode: 'persistent'
+        controller_type: 'paravirtual'
+        controller_number: 0
+      - size_gb: 300
+        type: thin
+        datastore: SSD
+        unit_number: 1
+        disk_mode: 'persistent'
+        controller_type: 'paravirtual'
+        controller_number: 0
+    hardware:
+      nested_virt: true
+      memory_mb: "{{ nested_info_global.esxi_mem_mb }}"
+      num_cpus: "{{ nested_info_global.esxi_cpu }}"
+    networks: "{{ networklist }}"
+    cdrom:
+      - controller_number: 0
+        unit_number: 0
+        type: iso
+        iso_path: "[SSD] ISOs/{{ nested_info.name }}.iso"
+        state: present
+
+- name: Power on nested ESXi host
+  community.vmware.vmware_guest:
+    hostname: "{{ physical_esxi_info.esxi_host }}"
+    username: "{{ physical_esxi_info.esxi_username }}"
+    password: "{{ physical_esxi_info.esxi_password }}"
+    validate_certs: false
+    datacenter: "ha-datacenter"
+    folder: "/ha-datacenter/vm"
+    name: "{{ nested_info.name }}"
+    state: poweredon
+
+- name: Cleanup local files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "/tmp/isoextract/"
+    - "/tmp/isofinished/"
