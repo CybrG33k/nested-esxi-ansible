@@ -1,0 +1,35 @@
+nested_info:
+  - name: vcf-mgmt-esxi-1
+    staticip: x.x.x.x
+    fqdn: vcf-mgmt-esxi-1.homelab.net
+  - name: vcf-mgmt-esxi-2
+    staticip: x.x.x.x
+    fqdn: vcf-mgmt-esxi-2.homelab.net
+  - name: vcf-mgmt-esxi-3
+    staticip: x.x.x.x
+    fqdn: vcf-mgmt-esxi-3.homelab.net
+  - name: vcf-mgmt-esxi-4
+    staticip: x.x.x.x
+    fqdn: vcf-mgmt-esxi-4.homelab.net
+physical_esxi:
+  esxi_host: x.x.x.x
+  esxi_username: root
+  esxi_password: "Changeme"
+  datastore_name: SSD
+nested_info_global:
+  username: root
+  password: "Changeme"
+  dns: x.x.x.x
+  domain: homelab.net
+  gateway: x.x.x.x
+  staticmask: x.x.x.x
+  ntpserver: x.x.x.x
+  networks:
+    - name: "VM Network"
+    - name: "VM Network"
+    - name: "VM Network"
+    - name: "VM Network"
+  iso_location: "/home/ansible/isos/ESXi-Installer-9.0.0.0.24755229.x86_64.iso"
+  esxi_cpu: 4
+  esxi_mem_mb: 16384
+  ks_nfs_base: "nfs://x.x.x.x/volume1/kickstart"

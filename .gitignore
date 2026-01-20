@@ -1,5 +1,4 @@
-# secrets
-vars/creds.yaml
+# Ansible retry files
 *.retry
 
 # venv
